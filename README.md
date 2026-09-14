@@ -108,7 +108,3 @@ For development there is a helper that wipes all homework records from the datab
 ```
 python -c "from bot.utils.development import clear_current_database; print(clear_current_database())"
 ```
-
-## License
-
-This project is provided as-is for educational / study-group use.

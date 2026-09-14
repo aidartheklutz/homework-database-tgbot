@@ -108,7 +108,3 @@ pytest
 ```
 python -c "from bot.utils.development import clear_current_database; print(clear_current_database())"
 ```
-
-## Лицензия
-
-Проект предоставляется «как есть» для учебных и групповых целей.
