@@ -1,0 +1,35 @@
+import sqlite3
+from pathlib import Path
+
+
+class Database:
+    def __init__(self, path: Path):
+        self.path = path
+
+    def connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.path)
+        connection.row_factory = sqlite3.Row
+        return connection
+
+    def initialize(self) -> None:
+        with self.connect() as connection:
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS homework (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    subject TEXT NOT NULL,
+                    description TEXT NOT NULL,
+                    photo_id TEXT,
+                    start_at DATETIME NOT NULL,
+                    deadline DATETIME NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME
+                )
+                """
+            )
+            cursor = connection.execute("PRAGMA table_info(homework)")
+            columns = {row["name"] for row in cursor.fetchall()}
+            if "photo_id" not in columns:
+                connection.execute("ALTER TABLE homework ADD COLUMN photo_id TEXT")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_homework_deadline ON homework(deadline)")
+            connection.execute("CREATE INDEX IF NOT EXISTS idx_homework_start_at ON homework(start_at)")
