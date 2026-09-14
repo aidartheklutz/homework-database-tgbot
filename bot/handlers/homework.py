@@ -41,11 +41,11 @@ def register_homework_handlers(bot: TeleBot, service: HomeworkService) -> None:
 
     @bot.message_handler(commands=["admin"])
     def admin_command(message):
-        bot.send_message(message.chat.id, "/share\n/edit\n/delete\n/notify\n/cancel")
+        bot.send_message(message.chat.id, "/share\n/edit\n/delete\n/notify\n/cancel\n/notify")
 
     @bot.message_handler(commands=["about"])
     def about_command(message):
-        bot.send_message(message.chat.id, f"<b>Информация о боте</b>\n\nБот был создан и поддерживается Айдаром Ырысовым специально для группы SEST-2-25. \n✱ <a href='https://t.me/aidartheklutz'>Связаться со мной</a>\n✱ <a href='https://t.me/theklutzcomm'>Мой ТГК</a>\n✱ <a href='https://aidartheklutz.github.io'>Мой сайт</a>\n✱ <a href='https://aidartheklutz.github.io/projects'>Мои проекты</a>\n\nСпасибо <a href='https://macestudios.ru'>Mace Dev</a> за предоставление хостинга.\n\nИсходный код проекта доступен на <a href='https://github.com/aidartheklutz/homework-database-tgbot'>GitHub</a>.\n\n<i>aidartheklutz 2026</i>", parse_mode="HTML")
+        bot.send_message(message.chat.id, f"<b>Информация о боте</b>\n\nБот был создан и поддерживается Айдаром Ырысовым специально для группы SEST-2-25. \n✱ <a href='https://t.me/aidartheklutz'>Связаться со мной</a>\n✱ <a href='https://t.me/theklutzcomm'>Мой ТГК</a>\n✱ <a href='https://aidartheklutz.github.io'>Мой сайт</a>\n✱ <a href='https://aidartheklutz.github.io/projects'>Мои проекты</a>\n\nСпасибо <a href='https://macestudios.ru'>Mace Dev</a> за предоставление хостинга.\n\nИсходный код проекта доступен на <a href='https://github.com/aidartheklutz/homework-database-tgbot/tree/sest2_hwbot'>GitHub</a>.\n\n<i>aidartheklutz 2026</i>", parse_mode="HTML")
 
     @bot.message_handler(commands=["today"])
     def today_command(message):
