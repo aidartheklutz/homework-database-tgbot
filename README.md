@@ -1,65 +1,126 @@
-# Бот домашних заданий
+# Homework Database Telegram Bot
 
-Telegram-бот для учебной группы: администратор публикует задания, а студенты быстро находят текущие, сегодняшние и прошедшие задания. Данные хранятся в SQLite; завершившиеся задания остаются в базе и доступны через историю.
+Readme: <u>English</u> | [Русский](/README.rus.md)
 
-## Возможности
+Telegram bot for a study group. An administrator publishes homework, and students quickly find today’s, tomorrow’s, active, and past assignments. Data lives in SQLite; finished homework stays in the database and remains available through history.
 
-- `/today` – задания со сроком сдачи сегодня.
-- `/tmrw` – задания со сроком сдачи завтра.
-- `/active` – выбор месяца с активными заданиями.
-- `/active all` – все активные задания.
-- `/history` – выбор месяца с прошедшими заданиями.
-- `/history 2026-04-11` – все прошедшие задания с этим сроком.
-- `/history 2026-04-11 Математика, Физика` – задания только по названным предметам.
-- `/share`, `/edit`, `/delete`, `/cancel` – команды администратора.
+## Features
 
-Пример для студента:
+**Student commands**
 
-```text
-/history 2026-04-11 Математика, Физика
+- `/today` – homework due today
+- `/tmrw` – homework due tomorrow
+- `/active` – choose a month with active homework
+- `/active all` – all currently active homework
+- `/history` – choose a month with past homework
+- `/history 2026-04-11` – all past homework with that deadline
+- `/history 2026-04-11 Math, Physics` – past homework only for the listed subjects
 
-Математика
-От: 01.04.2026
-До: 11.04.2026
+**Admin commands**
 
-Решить задачи 1–15.
+- `/share` – publish new homework (step-by-step: subject → description → optional photo → start date → deadline)
+- `/edit` – edit existing homework (subject, description, photo, dates)
+- `/delete` – delete homework
+- `/cancel` – cancel the current multi-step operation
+
+Example student query:
+
+```
+/history 2026-04-11 Math, Physics
+
+Math
+From: 01.04.2026
+Until: 11.04.2026
+
+Solve problems 1–15.
 ```
 
-После `/share` бот последовательно попросит предмет, описание, дату начала и срок сдачи. На каждом шаге показан пример. Введите даты как `2026-11-03` или дату и время как `2026-11-07 23:59`. Если время срока не указано, используется 23:59.
+After `/share` the bot asks for subject, description (text or photo with caption), optional photo, start date, and deadline. Dates can be entered as `2026-11-03` or with time as `2026-11-07 23:59`. If time is omitted for the deadline, it defaults to 23:59.
 
-## Установка и запуск
+## Tech Stack
 
-1. Создайте и активируйте виртуальное окружение.
-2. Установите зависимости:
+- **Python**
+- **pyTelegramBotAPI** (TeleBot)
+- **SQLite** (single table `homework`)
+- **python-dotenv**
+- **tzdata** / `zoneinfo` (timezone support, default `Asia/Bishkek`)
+- **pytest**
 
-   ```powershell
+Project layout:
+
+```
+bot/
+├── config.py
+├── main.py
+├── database/ # Database + repository
+├── handlers/ # Student + admin command handlers
+├── services/ # Business logic
+└── utils/ # Dates, formatting, development helpers
+```
+
+## Getting Started
+
+1. Clone the repository:
+
+   ```
+   git clone https://github.com/aidartheklutz/homework-database-tgbot.git
+   cd homework-database-tgbot
+   ```
+
+2. Create and activate a virtual environment:
+
+   ```
+   python -m venv .venv
+   source .venv/bin/activate # Linux/macOS
+
+   # or .venv\Scripts\activate on Windows
+
+   ```
+
+3. Install dependencies:
+
+   ```
    pip install -r requirements.txt
    ```
 
-3. Скопируйте `.env.example` в `.env`.
-4. Укажите `BOT_TOKEN` и числовые Telegram ID администраторов через запятую в `ADMIN_IDS`.
-5. Запустите:
+4. Copy the example environment file and fill in the values:
 
-   ```powershell
+   ```
+   cp .env.example .env
+   ```
+
+   ```
+   BOT_TOKEN=your_telegram_bot_token
+   ADMIN_IDS=123456789,987654321
+   DATABASE_PATH=homework.db
+   TIMEZONE=Asia/Bishkek
+   ```
+
+5. Run the bot:
+   ```
    python main.py
    ```
 
-`homework.db` создаётся автоматически рядом с точкой запуска. Схема содержит одну таблицу `homework`; статус задания вычисляется по `start_at` и `deadline` в часовом поясе `Asia/Bishkek`. Не добавляйте `.env` в Git: он уже исключён `.gitignore`.
+`homework.db` is created automatically next to the entry point. The schema contains one table `homework`; status (active / past) is computed from `start_at` and `deadline` in the configured timezone. Do not commit `.env` – it is already listed in `.gitignore`.
 
-## Развёртывание
+## Deployment
 
-На сервере задайте те же переменные окружения, обеспечьте постоянное хранилище для SQLite-файла и держите процесс запущенным через systemd, Docker или другой менеджер процессов. Для MVP используется long polling, поэтому одновременно должен работать только один экземпляр бота с одной базой.
+On a server set the same environment variables, ensure persistent storage for the SQLite file, and keep the process running with systemd, Docker, or another process manager. The MVP uses long polling, so only one bot instance should run against a single database.
 
-## Проверка
+## Tests
 
-```powershell
+```
 pytest
 ```
 
-## Очистка тестовых данных
+## Clearing test data
 
-Для разработки доступна функция `clear_current_database` из `bot.utils.development`. Она удаляет все записи домашних заданий из базы, указанной в `.env`, и не является Telegram-командой:
+For development there is a helper that wipes all homework records from the database configured in `.env` (it is **not** a Telegram command):
 
-```powershell
+```
 python -c "from bot.utils.development import clear_current_database; print(clear_current_database())"
 ```
+
+## License
+
+This project is provided as-is for educational / study-group use.
