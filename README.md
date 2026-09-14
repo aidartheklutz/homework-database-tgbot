@@ -46,18 +46,6 @@ After `/share` the bot asks for subject, description (text or photo with caption
 - **tzdata** / `zoneinfo` (timezone support, default `Asia/Bishkek`)
 - **pytest**
 
-Project layout:
-
-```
-bot/
-├── config.py
-├── main.py
-├── database/ # Database + repository
-├── handlers/ # Student + admin command handlers
-├── services/ # Business logic
-└── utils/ # Dates, formatting, development helpers
-```
-
 ## Getting Started
 
 1. Clone the repository:
