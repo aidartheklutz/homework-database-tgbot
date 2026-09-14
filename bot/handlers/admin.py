@@ -2,12 +2,14 @@ from dataclasses import dataclass, field
 from datetime import datetime
 
 from telebot import TeleBot, types
+from telebot.apihelper import ApiTelegramException
 from telebot.formatting import apply_html_entities
 
+from bot.database.repository import UserRepository
 from bot.handlers.common import send_homework
 from bot.services.homework_service import HomeworkService
 from bot.utils.dates import parse_admin_datetime
-from bot.utils.formatting import format_homework
+from bot.utils.formatting import format_homework, format_notify_message
 
 
 # Database cleanup:
@@ -21,7 +23,7 @@ class AdminState:
     values: dict = field(default_factory=dict)
 
 
-def register_admin_handlers(bot: TeleBot, service: HomeworkService, admin_ids: frozenset[int]) -> None:
+def register_admin_handlers(bot: TeleBot, service: HomeworkService, admin_ids: frozenset[int], users: UserRepository) -> None:
     states: dict[int, AdminState] = {}
 
     def is_admin(user_id: int) -> bool:
@@ -73,6 +75,29 @@ def register_admin_handlers(bot: TeleBot, service: HomeworkService, admin_ids: f
             return
         action = message.text.split()[0].lstrip("/").split("@")[0]
         _show_admin_list(bot, message.chat.id, service, action, 0)
+
+    @bot.message_handler(commands=["notify"])
+    def notify_command(message):
+        if not is_admin(message.from_user.id):
+            deny(message)
+            return
+        chat_ids = users.list_chat_ids()
+        if not chat_ids:
+            bot.send_message(message.chat.id, "Пока нет пользователей, которым можно отправить уведомление.")
+#          bot.send_message(message.chat.id, "There are no users to notify yet.")
+            return
+        subjects = [item.subject for item in service.latest_active(3)]
+        text = format_notify_message(subjects)
+        sent = 0
+        for chat_id in chat_ids:
+            try:
+                bot.send_message(chat_id, text, parse_mode="HTML")
+                sent += 1
+            except ApiTelegramException as error:
+                if error.error_code in {400, 403}:
+                    users.delete(chat_id)
+        bot.send_message(message.chat.id, f"Уведомление отправлено: {sent} из {len(chat_ids)}.")
+#      bot.send_message(message.chat.id, f"Notification sent: {sent} of {len(chat_ids)}.")
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith(("admin_list:", "admin_pick:", "admin_field:", "admin_delete:")))
     def admin_callback(call):
@@ -136,12 +161,6 @@ def register_admin_handlers(bot: TeleBot, service: HomeworkService, admin_ids: f
             _save_edit_value(bot, message, service, states, state, prompt_for_step)
             return
         _save_share_value(bot, message, service, states, state, prompt_for_step)
-
-    @bot.message_handler(func=lambda message: message.from_user and is_admin(message.from_user.id), content_types=["text", "photo"])
-    def admin_without_state(message):
-        if message.content_type == "photo" or not message.text.startswith("/"):
-            bot.send_message(message.chat.id, "Нет незавершённой операции. Используйте /share, чтобы добавить задание.")
-#          bot.send_message(message.chat.id, "No pending operation. Use /share to add homework.")
 
 
 def _show_admin_list(bot: TeleBot, chat_id, service: HomeworkService, action: str, page: int, edit_message=None) -> None:

@@ -103,3 +103,28 @@ class HomeworkRepository:
         with self.database.connect() as connection:
             rows = connection.execute(query, tuple(values)).fetchall()
         return [_row_to_homework(row) for row in rows]
+
+
+class UserRepository:
+    def __init__(self, database: Database):
+        self.database = database
+
+    def upsert(self, chat_id: int) -> None:
+        now = datetime.now().replace(microsecond=0).isoformat(sep=" ")
+        with self.database.connect() as connection:
+            connection.execute(
+                """
+                INSERT INTO users(chat_id, first_seen, last_seen) VALUES (?, ?, ?)
+                ON CONFLICT(chat_id) DO UPDATE SET last_seen = excluded.last_seen
+                """,
+                (chat_id, now, now),
+            )
+
+    def list_chat_ids(self) -> list[int]:
+        with self.database.connect() as connection:
+            rows = connection.execute("SELECT chat_id FROM users ORDER BY chat_id").fetchall()
+        return [row["chat_id"] for row in rows]
+
+    def delete(self, chat_id: int) -> None:
+        with self.database.connect() as connection:
+            connection.execute("DELETE FROM users WHERE chat_id = ?", (chat_id,))

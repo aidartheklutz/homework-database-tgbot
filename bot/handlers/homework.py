@@ -3,7 +3,7 @@ from datetime import timedelta
 from telebot import TeleBot, types
 
 from bot.database.repository import Homework
-from bot.handlers.common import HELP_TEXT, send_homework, send_long
+from bot.handlers.common import HELP_TEXT, TRACKED_CONTENT_TYPES, send_homework, send_long
 from bot.services.homework_service import HomeworkService, parse_history_arguments
 from bot.utils.dates import russian_month
 from bot.utils.formatting import format_grouped_full, format_history_index, format_homework
@@ -38,6 +38,14 @@ def register_homework_handlers(bot: TeleBot, service: HomeworkService) -> None:
     @bot.message_handler(commands=["start", "help"])
     def help_command(message):
         bot.send_message(message.chat.id, HELP_TEXT, parse_mode="HTML")
+
+    @bot.message_handler(commands=["admin"])
+    def admin_command(message):
+        bot.send_message(message.chat.id, "/share\n/edit\n/delete\n/notify\n/cancel")
+
+    @bot.message_handler(commands=["about"])
+    def about_command(message):
+        bot.send_message(message.chat.id, f"<b>Информация о боте</b>\n\nБот был создан и поддерживается Айдаром Ырысовым специально для группы SEST-2-25. \n✱ <a href='https://t.me/aidartheklutz'>Связаться со мной</a>\n✱ <a href='https://t.me/theklutzcomm'>Мой ТГК</a>\n✱ <a href='https://aidartheklutz.github.io'>Мой сайт</a>\n✱ <a href='https://aidartheklutz.github.io/projects'>Мои проекты</a>\n\nСпасибо <a href='https://macestudios.ru'>Mace Dev</a> за предоставление хостинга.\n\nИсходный код проекта доступен на <a href='https://github.com/aidartheklutz/homework-database-tgbot'>GitHub</a>.\n\n<i>aidartheklutz 2026</i>", parse_mode="HTML")
 
     @bot.message_handler(commands=["today"])
     def today_command(message):
@@ -92,8 +100,7 @@ def register_homework_handlers(bot: TeleBot, service: HomeworkService) -> None:
                 bot.send_message(message.chat.id, "Прошедших домашних заданий пока нет.")
 #              bot.send_message(message.chat.id, "No past homework yet.")
                 return
-            bot.send_message(message.chat.id, "Выберите месяц с прошедшими заданиями:", reply_markup=_month_keyboard("history", months, 0))
-#          bot.send_message(message.chat.id, "Select a month with past homework:", reply_markup=_month_keyboard("history", months, 0))
+            bot.send_message(message.chat.id, f"Выберите месяц с прошедшими заданиями. Также вы можете выбрать домашнее задание на специфическую дату, например: <b>/history 2026-11-03</b>", reply_markup=_month_keyboard("history", months, 0))
             return
         try:
             request = parse_history_arguments(argument)
@@ -137,6 +144,12 @@ def register_homework_handlers(bot: TeleBot, service: HomeworkService) -> None:
             heading = f"<b>{russian_month(year, month)}</b>\n\n"
             output = format_history_index(items)
             send_long(bot, call.message.chat.id, heading + output, parse_mode="HTML")
+
+
+def register_fallback_handler(bot: TeleBot) -> None:
+    @bot.message_handler(func=lambda message: True, content_types=TRACKED_CONTENT_TYPES)
+    def fallback_help(message):
+        bot.send_message(message.chat.id, HELP_TEXT, parse_mode="HTML")
 
 
 def _command_argument(text: str) -> str:

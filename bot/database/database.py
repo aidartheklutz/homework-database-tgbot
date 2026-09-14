@@ -33,3 +33,12 @@ class Database:
                 connection.execute("ALTER TABLE homework ADD COLUMN photo_id TEXT")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_homework_deadline ON homework(deadline)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_homework_start_at ON homework(start_at)")
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    chat_id INTEGER PRIMARY KEY,
+                    first_seen DATETIME NOT NULL,
+                    last_seen DATETIME NOT NULL
+                )
+                """
+            )

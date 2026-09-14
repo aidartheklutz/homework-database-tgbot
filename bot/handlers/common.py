@@ -1,7 +1,21 @@
 from telebot import TeleBot
 
-from bot.database.repository import Homework
+from bot.database.repository import Homework, UserRepository
 from bot.utils.formatting import format_homework, split_message
+
+TRACKED_CONTENT_TYPES = [
+    "text",
+    "photo",
+    "document",
+    "audio",
+    "video",
+    "voice",
+    "sticker",
+    "animation",
+    "video_note",
+    "location",
+    "contact",
+]
 
 
 def send_long(bot: TeleBot, chat_id: int, text: str, **kwargs) -> None:
@@ -21,15 +35,26 @@ def send_homework(bot: TeleBot, chat_id: int, homework: Homework) -> None:
         send_long(bot, chat_id, text, parse_mode="HTML")
 
 
-HELP_TEXT = """<b>Домашние задания</b>
+def register_user_tracking(bot: TeleBot, users: UserRepository) -> None:
+    def remember(message) -> bool:
+        if message.chat and message.chat.type == "private":
+            users.upsert(message.chat.id)
+        return False
 
-/today – задания, которые нужно сдать сегодня.
-/tmrw – задания, которые нужно сдать завтра.
-/active – список актуальных заданий.
-/active all – показать все актуальные задания.
-/history – просмотреть архив прошедших заданий.
+    @bot.message_handler(func=remember, content_types=TRACKED_CONTENT_TYPES)
+    def _remember_user(message):
+        pass
 
-ADMIN: /share, /edit, /delete, /cancel."""
+
+HELP_TEXT = """<b>Список комманд</b>
+
+✱ <b>/today</b> – задания, которые нужно сдать сегодня.
+✱ <b>/tmrw</b> – задания, которые нужно сдать завтра.
+✱ <b>/active</b> – список актуальных заданий.
+✱ <b>/active all</b> – показать все актуальные задания.
+✱ <b>/history</b> – просмотреть архив прошедших заданий.
+ ↳ <b>/history ГГГГ-ММ-ДД</b> – просмотреть прошедшие задания на определённую дату.
+"""
 #  HELP_TEXT = """<b>Homework</b>
 #  
 #  /today – homework due today.

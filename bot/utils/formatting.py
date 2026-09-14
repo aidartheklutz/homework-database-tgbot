@@ -43,6 +43,13 @@ def format_history_index(items: list[Homework]) -> str:
     return "\n\n".join(blocks)
 
 
+def format_notify_message(subjects: list[str]) -> str:
+    if not subjects:
+        return "Опубликовано новое домашнее задание! Напишите /active для просмотра."
+    names = "\n".join(f"<b>{html.escape(subject)}</b>" for subject in subjects)
+    return f"Опубликовано новое домашнее задание!\n\n{names}\n\nНапишите /active для просмотра."
+
+
 def split_message(text: str, maximum: int = MAX_MESSAGE_LENGTH) -> list[str]:
     if len(text) <= maximum:
         return [text]

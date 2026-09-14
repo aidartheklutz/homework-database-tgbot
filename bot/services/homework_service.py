@@ -46,6 +46,11 @@ class HomeworkService:
     def active_homework(self) -> list[Homework]:
         return self.repository.list_active(self.current_time())
 
+    def latest_active(self, limit: int = 3) -> list[Homework]:
+        items = self.active_homework()
+        items.sort(key=lambda item: (item.created_at, item.id), reverse=True)
+        return items[:limit]
+
     def due_on(self, target_date: date) -> list[Homework]:
         start, end = date_bounds(target_date)
         return self.repository.list_deadline_on(start, end)
