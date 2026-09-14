@@ -1,6 +1,6 @@
 # Homework Database Telegram Bot
 
-Readme: <u>English</u> | [Русский](/README.rus.md)
+Readme: **English** | [Русский](/README.rus.md)
 
 Telegram bot for a study group. An administrator publishes homework, and students quickly find today’s, tomorrow’s, active, and past assignments. Data lives in SQLite; finished homework stays in the database and remains available through history.
 
