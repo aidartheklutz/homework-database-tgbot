@@ -78,7 +78,7 @@ Telegram-бот для учебной группы. Администратор �
    ```
 
    ```
-   BOT*TOKEN=ваш_токен_тг_бота
+   BOT_TOKEN=ваш_токен_тг_бота
    ADMIN_IDS=123456789,987654321
    DATABASE_PATH=homework.db
    TIMEZONE=Asia/Bishkek
