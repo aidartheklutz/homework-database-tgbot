@@ -2,7 +2,7 @@
 
 Readme: **English** | [Русский](/README.rus.md)
 
-Telegram bot for a class or study group. An administrator publishes homework, and students quickly find today's, tomorrow's, active, and past assignments. Data lives in SQLite; finished homework stays in the database and remains available through history.
+Telegram bot for the SEST-1-25 and SEST-2-25 groups. Students choose their group and only see that group's homework. Data lives in SQLite; finished homework stays in the database and remains available through history.
 
 ## Features
 
@@ -22,6 +22,11 @@ Telegram bot for a class or study group. An administrator publishes homework, an
 - `/edit` – edit existing homework (subject, description, photo, dates)
 - `/delete` – delete homework
 - `/cancel` – cancel the current multi-step operation
+- `/notify` – notify users in the editor's assigned group
+- `/add_sest1` – head admin: add a SEST-1-25 editor by Telegram ID
+- `/del_sest1` – head admin: remove a SEST-1-25 editor by Telegram ID
+
+Head admins configured through `ADMIN_IDS` publish and notify SEST-2-25 by default. SEST-1-25 editor IDs are stored in `editors.json`; they can only publish, edit, delete, and notify within SEST-1-25. For `/edit` and `/delete`, a head admin can choose either group.
 
 Example student query:
 
@@ -81,6 +86,7 @@ After `/share` the bot asks for subject, description (text or photo with caption
    BOT_TOKEN=your_telegram_bot_token
    ADMIN_IDS=123456789,987654321
    DATABASE_PATH=homework.db
+   EDITORS_PATH=editors.json
    TIMEZONE=Asia/Bishkek
    ```
 
@@ -89,7 +95,7 @@ After `/share` the bot asks for subject, description (text or photo with caption
    python main.py
    ```
 
-`homework.db` is created automatically next to the entry point. The schema contains one table `homework`; status (active / past) is computed from `start_at` and `deadline` in the configured timezone. Do not commit `.env` – it is already listed in `.gitignore`.
+`homework.db` is created automatically next to the entry point. Existing homework is migrated to SEST-2-25, while existing users are asked to choose a group. Status (active / past) is computed from `start_at` and `deadline` in the configured timezone. Neither `.env` nor the runtime `editors.json` should be committed; both are listed in `.gitignore`.
 
 ## Deployment
 

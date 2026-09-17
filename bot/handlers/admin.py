@@ -6,6 +6,8 @@ from telebot.apihelper import ApiTelegramException
 from telebot.formatting import apply_html_entities
 
 from bot.database.repository import UserRepository
+from bot.editors import EditorRepository
+from bot.groups import GROUPS, SEST1, SEST2
 from bot.handlers.common import send_homework
 from bot.services.homework_service import HomeworkService
 from bot.utils.dates import parse_admin_datetime
@@ -19,15 +21,34 @@ from bot.utils.formatting import format_homework, format_notify_message
 class AdminState:
     action: str
     step: str
+    group_name: str | None = None
     homework_id: int | None = None
     values: dict = field(default_factory=dict)
 
 
-def register_admin_handlers(bot: TeleBot, service: HomeworkService, admin_ids: frozenset[int], users: UserRepository) -> None:
+def register_admin_handlers(
+    bot: TeleBot,
+    service: HomeworkService,
+    admin_ids: frozenset[int],
+    users: UserRepository,
+    editors: EditorRepository,
+) -> None:
     states: dict[int, AdminState] = {}
 
-    def is_admin(user_id: int) -> bool:
+    def is_head_admin(user_id: int) -> bool:
         return user_id in admin_ids
+
+    def editor_group(user_id: int) -> str | None:
+        if is_head_admin(user_id):
+            return SEST2
+        if user_id in editors.list_ids():
+            return SEST1
+        return None
+
+    def can_manage_group(user_id: int, group_name: str) -> bool:
+        return group_name in GROUPS and (
+            is_head_admin(user_id) or editor_group(user_id) == group_name
+        )
 
     def deny(message) -> None:
         bot.send_message(message.chat.id, "У вас нет прав для этой команды.")
@@ -41,24 +62,37 @@ def register_admin_handlers(bot: TeleBot, service: HomeworkService, admin_ids: f
 #          "description": "Enter homework description (you can attach links or send a photo with description in caption).\n\nExample:\nRead chapter 4 and solve problems 12–18.",
             "photo": "Отправьте новую фотографию для задания или напишите /delete_photo для удаления фото." if state.action == "edit" else "Отправьте фотографию к заданию (или отправьте /skip, если фото не требуется):",
 #          "photo": "Send a new photo for the homework or send /delete_photo to remove photo." if state.action == "edit" else "Send a photo for the homework (or send /skip if no photo is needed):",
-            "start_at": "Введите дату начала.\n\nПример:\n2026-11-03\n\nМожно указать время: 2026-11-03 09:00",
+            "start_at": f"Введите дату начала.\n\nПример:\n2026-11-03\n\nСегодня: <code>{service.current_time():%Y-%m-%d}</code>\n\nМожно указать время: 2026-11-03 09:00",
 #          "start_at": "Enter start date.\n\nExample:\n2026-11-03\n\nYou can specify time: 2026-11-03 09:00",
             "deadline": "Введите срок сдачи.\n\nПример:\n2026-11-04 23:59\n\nЕсли указать только дату, срок будет установлен на 23:59.",
 #          "deadline": "Enter deadline.\n\nExample:\n2026-11-04 23:59\n\nIf only date is specified, deadline will be set to 23:59.",
         }
-        bot.send_message(chat_id, prompts[state.step])
+        bot.send_message(chat_id, prompts[state.step], parse_mode="HTML")
+
+    @bot.message_handler(commands=["admin"])
+    def admin_command(message):
+        if editor_group(message.from_user.id) is None:
+            deny(message)
+            return
+        commands = "/share\n/edit\n/delete\n/notify\n/cancel"
+        if is_head_admin(message.from_user.id):
+            commands += "\n/add_sest1\n/del_sest1"
+        bot.send_message(message.chat.id, commands)
 
     @bot.message_handler(commands=["share"])
     def share_command(message):
-        if not is_admin(message.from_user.id):
+        group_name = editor_group(message.from_user.id)
+        if group_name is None:
             deny(message)
             return
-        states[message.from_user.id] = AdminState(action="share", step="subject")
+        states[message.from_user.id] = AdminState(
+            action="share", step="subject", group_name=group_name
+        )
         prompt_for_step(message.chat.id, states[message.from_user.id])
 
     @bot.message_handler(commands=["cancel"])
     def cancel_command(message):
-        if not is_admin(message.from_user.id):
+        if editor_group(message.from_user.id) is None:
             deny(message)
             return
         if states.pop(message.from_user.id, None):
@@ -70,23 +104,39 @@ def register_admin_handlers(bot: TeleBot, service: HomeworkService, admin_ids: f
 
     @bot.message_handler(commands=["edit", "delete"])
     def manage_command(message):
-        if not is_admin(message.from_user.id):
+        group_name = editor_group(message.from_user.id)
+        if group_name is None:
             deny(message)
             return
         action = message.text.split()[0].lstrip("/").split("@")[0]
-        _show_admin_list(bot, message.chat.id, service, action, 0)
+        if is_head_admin(message.from_user.id):
+            keyboard = types.InlineKeyboardMarkup()
+            for candidate in GROUPS:
+                keyboard.add(
+                    types.InlineKeyboardButton(
+                        candidate, callback_data=f"admin_group:{action}:{candidate}"
+                    )
+                )
+            bot.send_message(
+                message.chat.id,
+                "Выберите группу:",
+                reply_markup=keyboard,
+            )
+        else:
+            _show_admin_list(bot, message.chat.id, service, action, group_name, 0)
 
     @bot.message_handler(commands=["notify"])
     def notify_command(message):
-        if not is_admin(message.from_user.id):
+        group_name = editor_group(message.from_user.id)
+        if group_name is None:
             deny(message)
             return
-        chat_ids = users.list_chat_ids()
+        chat_ids = users.list_chat_ids(group_name)
         if not chat_ids:
             bot.send_message(message.chat.id, "Пока нет пользователей, которым можно отправить уведомление.")
 #          bot.send_message(message.chat.id, "There are no users to notify yet.")
             return
-        subjects = [item.subject for item in service.latest_active(3)]
+        subjects = [item.subject for item in service.latest_active(group_name, 3)]
         text = format_notify_message(subjects)
         sent = 0
         for chat_id in chat_ids:
@@ -99,20 +149,52 @@ def register_admin_handlers(bot: TeleBot, service: HomeworkService, admin_ids: f
         bot.send_message(message.chat.id, f"Уведомление отправлено: {sent} из {len(chat_ids)}.")
 #      bot.send_message(message.chat.id, f"Notification sent: {sent} of {len(chat_ids)}.")
 
-    @bot.callback_query_handler(func=lambda call: call.data.startswith(("admin_list:", "admin_pick:", "admin_field:", "admin_delete:")))
+    @bot.message_handler(commands=["add_sest1", "del_sest1"])
+    def manage_editor_command(message):
+        if not is_head_admin(message.from_user.id):
+            deny(message)
+            return
+        action = message.text.split()[0].lstrip("/").split("@")[0]
+        states[message.from_user.id] = AdminState(
+            action=action, step="telegram_id", group_name=SEST1
+        )
+        verb = "добавить" if action == "add_sest1" else "удалить"
+        bot.send_message(
+            message.chat.id,
+            f"Отправьте Telegram ID редактора, которого нужно {verb}.",
+        )
+
+    @bot.callback_query_handler(func=lambda call: call.data.startswith(("admin_group:", "admin_list:", "admin_pick:", "admin_field:", "admin_delete:")))
     def admin_callback(call):
-        if not is_admin(call.from_user.id):
+        if editor_group(call.from_user.id) is None:
             bot.answer_callback_query(call.id, "Нет прав доступа.")
 #          bot.answer_callback_query(call.id, "Access denied.")
             return
         parts = call.data.split(":")
+        if parts[0] == "admin_group":
+            action, group_name = parts[1], parts[2]
+            if not can_manage_group(call.from_user.id, group_name):
+                bot.answer_callback_query(call.id, "Нет прав доступа.")
+                return
+            _show_admin_list(
+                bot, call.message.chat.id, service, action, group_name, 0
+            )
+            bot.answer_callback_query(call.id)
+            return
         if parts[0] == "admin_list":
-            _show_admin_list(bot, call.message.chat.id, service, parts[1], int(parts[2]), edit_message=call.message)
+            action, group_name, page = parts[1], parts[2], int(parts[3])
+            if not can_manage_group(call.from_user.id, group_name):
+                bot.answer_callback_query(call.id, "Нет прав доступа.")
+                return
+            _show_admin_list(bot, call.message.chat.id, service, action, group_name, page, edit_message=call.message)
             bot.answer_callback_query(call.id)
             return
         if parts[0] == "admin_pick":
-            action, homework_id = parts[1], int(parts[2])
-            homework = service.repository.get(homework_id)
+            action, group_name, homework_id = parts[1], parts[2], int(parts[3])
+            if not can_manage_group(call.from_user.id, group_name):
+                bot.answer_callback_query(call.id, "Нет прав доступа.")
+                return
+            homework = service.repository.get(homework_id, group_name)
             if not homework:
                 bot.answer_callback_query(call.id, "Задание уже удалено.")
 #              bot.answer_callback_query(call.id, "Homework has already been deleted.")
@@ -120,9 +202,9 @@ def register_admin_handlers(bot: TeleBot, service: HomeworkService, admin_ids: f
             if action == "delete":
                 keyboard = types.InlineKeyboardMarkup()
                 keyboard.row(
-                    types.InlineKeyboardButton("Да, удалить", callback_data=f"admin_delete:yes:{homework_id}"),
+                    types.InlineKeyboardButton("Да, удалить", callback_data=f"admin_delete:yes:{group_name}:{homework_id}"),
 #                  types.InlineKeyboardButton("Yes, delete", callback_data=f"admin_delete:yes:{homework_id}"),
-                    types.InlineKeyboardButton("Отмена", callback_data="admin_delete:no:0"),
+                    types.InlineKeyboardButton("Отмена", callback_data=f"admin_delete:no:{group_name}:0"),
 #                  types.InlineKeyboardButton("Cancel", callback_data="admin_delete:no:0"),
                 )
                 bot.send_message(call.message.chat.id, "Удалить это задание?\n\n" + format_homework(homework), parse_mode="HTML", reply_markup=keyboard)
@@ -131,18 +213,29 @@ def register_admin_handlers(bot: TeleBot, service: HomeworkService, admin_ids: f
                 keyboard = types.InlineKeyboardMarkup(row_width=2)
                 for key, label in (("subject", "Предмет"), ("description", "Описание"), ("photo", "Фотография"), ("start_at", "Дата начала"), ("deadline", "Срок сдачи")):
 #              for key, label in (("subject", "Subject"), ("description", "Description"), ("photo", "Photo"), ("start_at", "Start date"), ("deadline", "Deadline")):
-                    keyboard.add(types.InlineKeyboardButton(label, callback_data=f"admin_field:{homework_id}:{key}"))
+                    keyboard.add(types.InlineKeyboardButton(label, callback_data=f"admin_field:{group_name}:{homework_id}:{key}"))
                 bot.send_message(call.message.chat.id, "Выберите, что изменить:", reply_markup=keyboard)
 #              bot.send_message(call.message.chat.id, "Select what to edit:", reply_markup=keyboard)
             bot.answer_callback_query(call.id)
             return
         if parts[0] == "admin_field":
-            states[call.from_user.id] = AdminState(action="edit", step=parts[2], homework_id=int(parts[1]))
+            group_name, homework_id, field_name = parts[1], int(parts[2]), parts[3]
+            if not can_manage_group(call.from_user.id, group_name):
+                bot.answer_callback_query(call.id, "Нет прав доступа.")
+                return
+            states[call.from_user.id] = AdminState(
+                action="edit", step=field_name, group_name=group_name,
+                homework_id=homework_id,
+            )
             prompt_for_step(call.message.chat.id, states[call.from_user.id])
             bot.answer_callback_query(call.id)
             return
         if parts[0] == "admin_delete":
-            if parts[1] == "yes" and service.repository.delete(int(parts[2])):
+            group_name, homework_id = parts[2], int(parts[3])
+            if not can_manage_group(call.from_user.id, group_name):
+                bot.answer_callback_query(call.id, "Нет прав доступа.")
+                return
+            if parts[1] == "yes" and service.repository.delete(homework_id, group_name):
                 bot.send_message(call.message.chat.id, "Домашнее задание удалено.")
 #              bot.send_message(call.message.chat.id, "Homework deleted.")
             else:
@@ -157,14 +250,46 @@ def register_admin_handlers(bot: TeleBot, service: HomeworkService, admin_ids: f
             return
         if message.content_type == "text" and message.text.startswith("/") and not message.text.startswith(("/skip", "/delete_photo")):
             return
+        if state.action in {"add_sest1", "del_sest1"}:
+            if not is_head_admin(message.from_user.id):
+                states.pop(message.from_user.id, None)
+                deny(message)
+                return
+            try:
+                editor_id = int((message.text or "").strip())
+                if editor_id <= 0:
+                    raise ValueError
+            except ValueError:
+                bot.send_message(message.chat.id, "Telegram ID должен быть положительным числом.")
+                return
+            changed = editors.add(editor_id) if state.action == "add_sest1" else editors.remove(editor_id)
+            states.pop(message.from_user.id, None)
+            if state.action == "add_sest1":
+                text = "Редактор SEST-1-25 добавлен." if changed else "Этот пользователь уже является редактором SEST-1-25."
+            else:
+                text = "Редактор SEST-1-25 удалён." if changed else "Этот пользователь не является редактором SEST-1-25."
+            bot.send_message(message.chat.id, text)
+            return
+        if not state.group_name or not can_manage_group(message.from_user.id, state.group_name):
+            states.pop(message.from_user.id, None)
+            deny(message)
+            return
         if state.action == "edit":
             _save_edit_value(bot, message, service, states, state, prompt_for_step)
             return
         _save_share_value(bot, message, service, states, state, prompt_for_step)
 
 
-def _show_admin_list(bot: TeleBot, chat_id, service: HomeworkService, action: str, page: int, edit_message=None) -> None:
-    items = service.repository.list_all()
+def _show_admin_list(
+    bot: TeleBot,
+    chat_id,
+    service: HomeworkService,
+    action: str,
+    group_name: str,
+    page: int,
+    edit_message=None,
+) -> None:
+    items = service.repository.list_all(group_name)
     if not items:
         service_text = "Домашних заданий пока нет."
 #      service_text = "No homework yet."
@@ -179,13 +304,13 @@ def _show_admin_list(bot: TeleBot, chat_id, service: HomeworkService, action: st
     for item in items[page * per_page:(page + 1) * per_page]:
         label = f"{item.subject} – до {item.deadline.strftime('%d.%m.%Y')}"
 #      label = f"{item.subject} – until {item.deadline.strftime('%d.%m.%Y')}"
-        keyboard.add(types.InlineKeyboardButton(label[:64], callback_data=f"admin_pick:{action}:{item.id}"))
+        keyboard.add(types.InlineKeyboardButton(label[:64], callback_data=f"admin_pick:{action}:{group_name}:{item.id}"))
     nav = []
     if page:
-        nav.append(types.InlineKeyboardButton("‹ Назад", callback_data=f"admin_list:{action}:{page - 1}"))
+        nav.append(types.InlineKeyboardButton("‹ Назад", callback_data=f"admin_list:{action}:{group_name}:{page - 1}"))
 #      nav.append(types.InlineKeyboardButton("‹ Back", callback_data=f"admin_list:{action}:{page - 1}"))
     if (page + 1) * per_page < len(items):
-        nav.append(types.InlineKeyboardButton("Далее ›", callback_data=f"admin_list:{action}:{page + 1}"))
+        nav.append(types.InlineKeyboardButton("Далее ›", callback_data=f"admin_list:{action}:{group_name}:{page + 1}"))
 #      nav.append(types.InlineKeyboardButton("Next ›", callback_data=f"admin_list:{action}:{page + 1}"))
     if nav:
         keyboard.row(*nav)
@@ -282,7 +407,7 @@ def _save_share_value(bot: TeleBot, message, service: HomeworkService, states: d
         state.values["deadline"] = parsed
         state.values.setdefault("photo_id", None)
         try:
-            homework = service.create_homework(**state.values)
+            homework = service.create_homework(group_name=state.group_name, **state.values)
         except ValueError:
             bot.send_message(message.chat.id, "Дата начала не может быть позже срока сдачи. Введите срок сдачи ещё раз.")
 #          bot.send_message(message.chat.id, "Start date cannot be after deadline. Enter deadline again.")
@@ -295,7 +420,7 @@ def _save_share_value(bot: TeleBot, message, service: HomeworkService, states: d
 
 
 def _save_edit_value(bot: TeleBot, message, service: HomeworkService, states: dict, state: AdminState, prompt_for_step) -> None:
-    homework = service.repository.get(state.homework_id)
+    homework = service.repository.get(state.homework_id, state.group_name)
     if not homework:
         states.pop(message.from_user.id, None)
         bot.send_message(message.chat.id, "Задание не найдено.")
@@ -307,7 +432,7 @@ def _save_edit_value(bot: TeleBot, message, service: HomeworkService, states: di
             bot.send_message(message.chat.id, "Введите предмет текстом.")
 #       bot.send_message(message.chat.id, "Enter the name of the subject.")
             return
-        updated = service.repository.update(state.homework_id, subject=message.text.strip())
+        updated = service.repository.update(state.homework_id, state.group_name, subject=message.text.strip())
         states.pop(message.from_user.id, None)
         bot.send_message(message.chat.id, "Домашнее задание обновлено:")
 #       bot.send_message(message.chat.id, "Homework updated:")
@@ -323,7 +448,7 @@ def _save_edit_value(bot: TeleBot, message, service: HomeworkService, states: di
                 return
             desc_html = apply_html_entities(message.caption, message.caption_entities).strip()
             photo_id = message.photo[-1].file_id
-            updated = service.repository.update(state.homework_id, description=desc_html, photo_id=photo_id)
+            updated = service.repository.update(state.homework_id, state.group_name, description=desc_html, photo_id=photo_id)
         else:
             raw_text = (message.text or "").strip()
             if not raw_text:
@@ -331,7 +456,7 @@ def _save_edit_value(bot: TeleBot, message, service: HomeworkService, states: di
 #               bot.send_message(message.chat.id, "Description can't be empty.")
                 return
             desc_html = apply_html_entities(message.text, message.entities).strip()
-            updated = service.repository.update(state.homework_id, description=desc_html)
+            updated = service.repository.update(state.homework_id, state.group_name, description=desc_html)
         states.pop(message.from_user.id, None)
         bot.send_message(message.chat.id, "Домашнее задание обновлено:")
 #       bot.send_message(message.chat.id, "Homework updated:")
@@ -341,7 +466,7 @@ def _save_edit_value(bot: TeleBot, message, service: HomeworkService, states: di
     if state.step == "photo":
         if message.content_type == "photo":
             photo_id = message.photo[-1].file_id
-            updated = service.repository.update(state.homework_id, photo_id=photo_id)
+            updated = service.repository.update(state.homework_id, state.group_name, photo_id=photo_id)
             states.pop(message.from_user.id, None)
             bot.send_message(message.chat.id, "Фотография обновлена:")
 #           bot.send_message(message.chat.id, "Image updated:")
@@ -350,7 +475,7 @@ def _save_edit_value(bot: TeleBot, message, service: HomeworkService, states: di
         else:
             text = (message.text or "").strip().casefold()
             if text in {"/delete_photo", "удалить", "/delete", "delete"}:
-                updated = service.repository.update(state.homework_id, photo_id=None)
+                updated = service.repository.update(state.homework_id, state.group_name, photo_id=None)
                 states.pop(message.from_user.id, None)
                 bot.send_message(message.chat.id, "Фотография удалена:")
 #               bot.send_message(message.chat.id, "Image deleted:")
@@ -377,7 +502,7 @@ def _save_edit_value(bot: TeleBot, message, service: HomeworkService, states: di
             bot.send_message(message.chat.id, "Дата начала не может быть позже срока сдачи. Попробуйте ещё раз.")
 #           bot.send_message(message.chat.id, "Start date cannot be after deadline. Enter deadline again.")
             return
-        updated = service.repository.update(state.homework_id, **{state.step: field_value})
+        updated = service.repository.update(state.homework_id, state.group_name, **{state.step: field_value})
         states.pop(message.from_user.id, None)
         bot.send_message(message.chat.id, "Домашнее задание обновлено:")
 #       bot.send_message(message.chat.id, "Homework updated:")

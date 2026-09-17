@@ -1,4 +1,6 @@
 .env
+editors.json
+editors.json.tmp
 *.db
 __pycache__/
 .pytest_cache/

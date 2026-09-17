@@ -23,7 +23,8 @@ class Database:
                     start_at DATETIME NOT NULL,
                     deadline DATETIME NOT NULL,
                     created_at DATETIME NOT NULL,
-                    updated_at DATETIME
+                    updated_at DATETIME,
+                    group_name TEXT NOT NULL DEFAULT 'SEST-2-25'
                 )
                 """
             )
@@ -31,14 +32,31 @@ class Database:
             columns = {row["name"] for row in cursor.fetchall()}
             if "photo_id" not in columns:
                 connection.execute("ALTER TABLE homework ADD COLUMN photo_id TEXT")
+            if "group_name" not in columns:
+                connection.execute(
+                    "ALTER TABLE homework ADD COLUMN group_name TEXT NOT NULL DEFAULT 'SEST-2-25'"
+                )
             connection.execute("CREATE INDEX IF NOT EXISTS idx_homework_deadline ON homework(deadline)")
             connection.execute("CREATE INDEX IF NOT EXISTS idx_homework_start_at ON homework(start_at)")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_homework_group_deadline "
+                "ON homework(group_name, deadline)"
+            )
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS users (
                     chat_id INTEGER PRIMARY KEY,
                     first_seen DATETIME NOT NULL,
-                    last_seen DATETIME NOT NULL
+                    last_seen DATETIME NOT NULL,
+                    group_name TEXT
                 )
                 """
+            )
+            user_columns = {
+                row["name"] for row in connection.execute("PRAGMA table_info(users)").fetchall()
+            }
+            if "group_name" not in user_columns:
+                connection.execute("ALTER TABLE users ADD COLUMN group_name TEXT")
+            connection.execute(
+                "CREATE INDEX IF NOT EXISTS idx_users_group ON users(group_name)"
             )

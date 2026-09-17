@@ -46,7 +46,7 @@ def register_user_tracking(bot: TeleBot, users: UserRepository) -> None:
         pass
 
 
-HELP_TEXT = """<b>Список комманд</b>
+HELP_TEXT = """<b>Список команд</b>
 
 ✱ <b>/today</b> – задания, которые нужно сдать сегодня.
 ✱ <b>/tmrw</b> – задания, которые нужно сдать завтра.

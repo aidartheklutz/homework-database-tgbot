@@ -11,6 +11,7 @@ class Settings:
     bot_token: str
     admin_ids: frozenset[int]
     database_path: Path
+    editors_path: Path
     timezone: ZoneInfo
 
 
@@ -33,5 +34,6 @@ def load_settings() -> Settings:
         bot_token=token,
         admin_ids=admin_ids,
         database_path=Path(os.getenv("DATABASE_PATH", "homework.db")),
+        editors_path=Path(os.getenv("EDITORS_PATH", "editors.json")),
         timezone=ZoneInfo(timezone_name),
     )

@@ -2,7 +2,8 @@ from datetime import timedelta
 
 from telebot import TeleBot, types
 
-from bot.database.repository import Homework
+from bot.database.repository import Homework, UserRepository
+from bot.groups import is_valid_group
 from bot.handlers.common import HELP_TEXT, TRACKED_CONTENT_TYPES, send_homework, send_long
 from bot.services.homework_service import HomeworkService, parse_history_arguments
 from bot.utils.dates import russian_month
@@ -34,22 +35,21 @@ def _send_homework_list(bot: TeleBot, chat_id: int, header: str, items: list[Hom
         send_homework(bot, chat_id, item)
 
 
-def register_homework_handlers(bot: TeleBot, service: HomeworkService) -> None:
-    @bot.message_handler(commands=["start", "help"])
+def register_homework_handlers(bot: TeleBot, service: HomeworkService, users: UserRepository) -> None:
+    def selected_group(chat_id: int) -> str:
+        return users.get_group(chat_id)
+
+    @bot.message_handler(commands=["help"])
     def help_command(message):
         bot.send_message(message.chat.id, HELP_TEXT, parse_mode="HTML")
 
-    @bot.message_handler(commands=["admin"])
-    def admin_command(message):
-        bot.send_message(message.chat.id, "/share\n/edit\n/delete\n/notify\n/cancel\n/notify")
-
     @bot.message_handler(commands=["about"])
     def about_command(message):
-        bot.send_message(message.chat.id, f"<b>Информация о боте</b>\n\nБот был создан и поддерживается Айдаром Ырысовым специально для группы SEST-2-25. \n✱ <a href='https://t.me/aidartheklutz'>Связаться со мной</a>\n✱ <a href='https://t.me/theklutzcomm'>Мой ТГК</a>\n✱ <a href='https://aidartheklutz.github.io'>Мой сайт</a>\n✱ <a href='https://aidartheklutz.github.io/projects'>Мои проекты</a>\n\nСпасибо <a href='https://macestudios.ru'>Mace Dev</a> за предоставление хостинга.\n\nИсходный код проекта доступен на <a href='https://github.com/aidartheklutz/homework-database-tgbot/tree/sest2_hwbot'>GitHub</a>.\n\n<i>aidartheklutz 2026</i>", parse_mode="HTML")
+        bot.send_message(message.chat.id, f"<b>Информация о боте</b>\n\nБот был создан и поддерживается Айдаром Ырысовым специально для групп SEST-1-25 и SEST-2-25. \n✱ <a href='https://t.me/aidartheklutz'>Связаться со мной</a>\n✱ <a href='https://t.me/theklutzcomm'>Мой ТГК</a>\n✱ <a href='https://aidartheklutz.github.io'>Мой сайт</a>\n✱ <a href='https://aidartheklutz.github.io/projects'>Мои проекты</a>\n\nСпасибо <a href='https://macestudios.ru'>Mace Dev</a> за предоставление хостинга.\n\nИсходный код проекта доступен на <a href='https://github.com/aidartheklutz/homework-database-tgbot/tree/sest2_hwbot'>GitHub</a>.\n\n<i>aidartheklutz 2026</i>", parse_mode="HTML")
 
     @bot.message_handler(commands=["today"])
     def today_command(message):
-        items = service.due_on(service.current_time().date())
+        items = service.due_on(service.current_time().date(), selected_group(message.chat.id))
         if not items:
             bot.send_message(message.chat.id, "На сегодня заданий со сроком сдачи нет.")
 #          bot.send_message(message.chat.id, "No homework due today.")
@@ -59,7 +59,7 @@ def register_homework_handlers(bot: TeleBot, service: HomeworkService) -> None:
 
     @bot.message_handler(commands=["tmrw"])
     def tomorrow_command(message):
-        items = service.due_on(service.current_time().date() + timedelta(days=1))
+        items = service.due_on(service.current_time().date() + timedelta(days=1), selected_group(message.chat.id))
         if not items:
             bot.send_message(message.chat.id, "На завтра заданий со сроком сдачи нет.")
 #          bot.send_message(message.chat.id, "No homework due tomorrow.")
@@ -71,7 +71,7 @@ def register_homework_handlers(bot: TeleBot, service: HomeworkService) -> None:
     def active_command(message):
         argument = _command_argument(message.text)
         if argument.casefold() == "all":
-            items = service.active_homework()
+            items = service.active_homework(selected_group(message.chat.id))
             if not items:
                 bot.send_message(message.chat.id, "Сейчас нет активных домашних заданий.")
 #              bot.send_message(message.chat.id, "No active homework right now.")
@@ -83,7 +83,7 @@ def register_homework_handlers(bot: TeleBot, service: HomeworkService) -> None:
             bot.send_message(message.chat.id, "Используйте /active или /active all.")
 #          bot.send_message(message.chat.id, "Use /active or /active all.")
             return
-        months = service.active_months()
+        months = service.active_months(selected_group(message.chat.id))
         if not months:
             bot.send_message(message.chat.id, "Сейчас нет активных домашних заданий.")
 #          bot.send_message(message.chat.id, "No active homework right now.")
@@ -95,7 +95,7 @@ def register_homework_handlers(bot: TeleBot, service: HomeworkService) -> None:
     def history_command(message):
         argument = _command_argument(message.text)
         if not argument:
-            months = service.historical_months()
+            months = service.historical_months(selected_group(message.chat.id))
             if not months:
                 bot.send_message(message.chat.id, "Прошедших домашних заданий пока нет.")
 #              bot.send_message(message.chat.id, "No past homework yet.")
@@ -108,7 +108,7 @@ def register_homework_handlers(bot: TeleBot, service: HomeworkService) -> None:
             bot.send_message(message.chat.id, "Используйте дату в формате:\n\n/history 2026-11-04\n\nЧтобы получить задания только по предметам:\n\n/history 2026-11-04 Машинное обучение, Линейная алгебра")
 #          bot.send_message(message.chat.id, "Use date in format:\n\n/history 2026-11-04\n\nTo get homework for specific subjects:\n\n/history 2026-11-04 Machine Learning, Linear Algebra")
             return
-        items = service.historical_for_request(request)
+        items = service.historical_for_request(request, selected_group(message.chat.id))
         if not items:
             bot.send_message(message.chat.id, "За указанную дату подходящих прошедших домашних заданий нет.")
 #          bot.send_message(message.chat.id, "No matching past homework for the specified date.")
@@ -118,10 +118,16 @@ def register_homework_handlers(bot: TeleBot, service: HomeworkService) -> None:
 
     @bot.callback_query_handler(func=lambda call: call.data.startswith(("active:", "history:", "active_page:", "history_page:")))
     def month_callback(call):
+        group_name = selected_group(call.message.chat.id)
+        if not is_valid_group(group_name):
+            bot.answer_callback_query(call.id, "Сначала выберите группу.")
+            from bot.handlers.onboarding import send_start
+            send_start(bot, call.message.chat.id, users)
+            return
         kind, *values = call.data.split(":")
         if kind.endswith("_page"):
             base_kind = kind.removesuffix("_page")
-            months = service.active_months() if base_kind == "active" else service.historical_months()
+            months = service.active_months(group_name) if base_kind == "active" else service.historical_months(group_name)
             page = int(values[0])
             if not months:
                 bot.answer_callback_query(call.id, "Список обновлён.")
@@ -131,7 +137,7 @@ def register_homework_handlers(bot: TeleBot, service: HomeworkService) -> None:
             bot.answer_callback_query(call.id)
             return
         year, month = int(values[0]), int(values[1])
-        items = service.active_for_month(year, month) if kind == "active" else service.historical_for_month(year, month)
+        items = service.active_for_month(year, month, group_name) if kind == "active" else service.historical_for_month(year, month, group_name)
         if not items:
             bot.answer_callback_query(call.id, "Для этого месяца заданий больше нет.")
 #          bot.answer_callback_query(call.id, "No more homework for this month.")

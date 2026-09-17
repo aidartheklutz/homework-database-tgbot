@@ -38,46 +38,46 @@ class HomeworkService:
     def current_time(self) -> datetime:
         return now_in_timezone(self.timezone)
 
-    def create_homework(self, subject: str, description: str, start_at: datetime, deadline: datetime, photo_id: str | None = None) -> Homework:
+    def create_homework(self, subject: str, description: str, start_at: datetime, deadline: datetime, group_name: str, photo_id: str | None = None) -> Homework:
         if start_at > deadline:
             raise ValueError("start_after_deadline")
-        return self.repository.create(subject.strip(), description.strip(), start_at, deadline, photo_id=photo_id)
+        return self.repository.create(subject.strip(), description.strip(), start_at, deadline, group_name, photo_id=photo_id)
 
-    def active_homework(self) -> list[Homework]:
-        return self.repository.list_active(self.current_time())
+    def active_homework(self, group_name: str) -> list[Homework]:
+        return self.repository.list_active(self.current_time(), group_name)
 
-    def latest_active(self, limit: int = 3) -> list[Homework]:
-        items = self.active_homework()
+    def latest_active(self, group_name: str, limit: int = 3) -> list[Homework]:
+        items = self.active_homework(group_name)
         items.sort(key=lambda item: (item.created_at, item.id), reverse=True)
         return items[:limit]
 
-    def due_on(self, target_date: date) -> list[Homework]:
+    def due_on(self, target_date: date, group_name: str) -> list[Homework]:
         start, end = date_bounds(target_date)
-        return self.repository.list_deadline_on(start, end)
+        return self.repository.list_deadline_on(start, end, group_name)
 
-    def historical_on(self, target_date: date) -> list[Homework]:
+    def historical_on(self, target_date: date, group_name: str) -> list[Homework]:
         start, end = date_bounds(target_date)
         now = self.current_time()
-        return [item for item in self.repository.list_deadline_on(start, end) if item.deadline < now]
+        return [item for item in self.repository.list_deadline_on(start, end, group_name) if item.deadline < now]
 
-    def historical_for_request(self, request: HistoryRequest) -> list[Homework]:
-        items = self.historical_on(request.requested_date)
+    def historical_for_request(self, request: HistoryRequest, group_name: str) -> list[Homework]:
+        items = self.historical_on(request.requested_date, group_name)
         if not request.subjects:
             return items
         wanted = set(request.subjects)
         return [item for item in items if normalize_subject(item.subject) in wanted]
 
-    def active_months(self) -> list[tuple[int, int]]:
-        return self._months_from(self.active_homework())
+    def active_months(self, group_name: str) -> list[tuple[int, int]]:
+        return self._months_from(self.active_homework(group_name))
 
-    def historical_months(self) -> list[tuple[int, int]]:
-        return self._months_from(self.repository.list_historical(self.current_time()))
+    def historical_months(self, group_name: str) -> list[tuple[int, int]]:
+        return self._months_from(self.repository.list_historical(self.current_time(), group_name))
 
-    def active_for_month(self, year: int, month: int) -> list[Homework]:
-        return self.repository.list_by_deadline_month(year, month, self.current_time(), historical=False)
+    def active_for_month(self, year: int, month: int, group_name: str) -> list[Homework]:
+        return self.repository.list_by_deadline_month(year, month, self.current_time(), historical=False, group_name=group_name)
 
-    def historical_for_month(self, year: int, month: int) -> list[Homework]:
-        return self.repository.list_by_deadline_month(year, month, self.current_time(), historical=True)
+    def historical_for_month(self, year: int, month: int, group_name: str) -> list[Homework]:
+        return self.repository.list_by_deadline_month(year, month, self.current_time(), historical=True, group_name=group_name)
 
     @staticmethod
     def _months_from(items: list[Homework]) -> list[tuple[int, int]]:
