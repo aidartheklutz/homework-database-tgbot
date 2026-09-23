@@ -19,6 +19,21 @@ from bot.utils.formatting import (
 )
 
 
+SUBJECTS = (
+    "Алгоритмы и структуры данных",
+    "Линейная алгебра",
+    "English Composition",
+    "АЧиП",
+    "Управление проектами",
+    "АВД",
+    "ООП",
+    "Математика для МО",
+    "Основы МО",
+    "Основы веб-разработки",
+    "Манасоведение",
+)
+
+
 # Database cleanup:
 # .\.venv\Scripts\python.exe -c "from bot.utils.development import clear_current_database; print(clear_current_database())"
 
@@ -61,7 +76,7 @@ def register_admin_handlers(
 
     def prompt_for_step(chat_id: int, state: AdminState) -> None:
         prompts = {
-            "subject": "Введите предмет.\n\nПример:\nМашинное обучение",
+            "subject": "Выберите предмет из списка ниже или введите его название вручную.",
 #          "subject": "Enter subject.\n\nExample:\nMachine Learning",
             "description": "Введите описание задания (можно прикрепить ссылки или отправить фото с описанием в подписи).\n\nПример:\nПрочитать главу 4 и решить задачи 12–18.",
 #          "description": "Enter homework description (you can attach links or send a photo with description in caption).\n\nExample:\nRead chapter 4 and solve problems 12–18.",
@@ -72,7 +87,22 @@ def register_admin_handlers(
             "deadline": "Введите срок сдачи.\n\nПример:\n2026-11-04 23:59\n\nЕсли указать только дату, срок будет установлен на 23:59.",
 #          "deadline": "Enter deadline.\n\nExample:\n2026-11-04 23:59\n\nIf only date is specified, deadline will be set to 23:59.",
         }
-        bot.send_message(chat_id, prompts[state.step], parse_mode="HTML")
+        reply_markup = None
+        if state.action == "share" and state.step == "subject":
+            reply_markup = types.InlineKeyboardMarkup()
+            for index, subject in enumerate(SUBJECTS):
+                reply_markup.add(
+                    types.InlineKeyboardButton(
+                        subject,
+                        callback_data=f"admin_subject:{index}",
+                    )
+                )
+        bot.send_message(
+            chat_id,
+            prompts[state.step],
+            parse_mode="HTML",
+            reply_markup=reply_markup,
+        )
 
     @bot.message_handler(commands=["admin"])
     def admin_command(message):
@@ -198,13 +228,37 @@ def register_admin_handlers(
             f"Отправьте Telegram ID редактора, которого нужно {verb}.",
         )
 
-    @bot.callback_query_handler(func=lambda call: call.data.startswith(("admin_group:", "admin_list:", "admin_pick:", "admin_field:", "admin_delete:", "admin_announcement:")))
+    @bot.callback_query_handler(func=lambda call: call.data.startswith(("admin_group:", "admin_list:", "admin_pick:", "admin_field:", "admin_delete:", "admin_announcement:", "admin_subject:")))
     def admin_callback(call):
         if editor_group(call.from_user.id) is None:
             bot.answer_callback_query(call.id, "Нет прав доступа.")
 #          bot.answer_callback_query(call.id, "Access denied.")
             return
         parts = call.data.split(":")
+        if parts[0] == "admin_subject":
+            state = states.get(call.from_user.id)
+            if not state or state.action != "share" or state.step != "subject":
+                bot.answer_callback_query(call.id, "Выбор предмета уже завершён.")
+                return
+            try:
+                subject_index = int(parts[1])
+            except (IndexError, ValueError):
+                bot.answer_callback_query(call.id, "Неизвестный предмет.")
+                return
+            if not 0 <= subject_index < len(SUBJECTS):
+                bot.answer_callback_query(call.id, "Неизвестный предмет.")
+                return
+            subject = SUBJECTS[subject_index]
+            state.values["subject"] = subject
+            state.step = "description"
+            bot.edit_message_reply_markup(
+                call.message.chat.id,
+                call.message.message_id,
+                reply_markup=None,
+            )
+            prompt_for_step(call.message.chat.id, state)
+            bot.answer_callback_query(call.id)
+            return
         if parts[0] == "admin_announcement":
             if not is_head_admin(call.from_user.id):
                 bot.answer_callback_query(call.id, "Нет прав доступа.")
