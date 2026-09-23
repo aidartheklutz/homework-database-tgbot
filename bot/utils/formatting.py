@@ -38,7 +38,7 @@ def format_history_index(items: list[Homework]) -> str:
     blocks = []
     for deadline, group in sorted(grouped.items()):
         subjects = "\n".join(item.subject for item in group)
-        blocks.append(f"Дедлайн: {deadline.isoformat()}\n{subjects}")
+        blocks.append(f"Дедлайн: <code>{deadline.isoformat()}</code>\n<b>{subjects}</b>")
 #      blocks.append(f"Deadline: {deadline.isoformat()}\n{subjects}")
     return "\n\n".join(blocks)
 
@@ -48,6 +48,14 @@ def format_notify_message(subjects: list[str]) -> str:
         return "Опубликовано новое домашнее задание! Напишите /active для просмотра."
     names = "\n".join(f"<b>{html.escape(subject)}</b>" for subject in subjects)
     return f"Опубликовано новое домашнее задание!\n\n{names}\n\nНапишите /active для просмотра."
+
+
+def format_announcement(text: str) -> str:
+    return (
+        "<b>Объявление</b>\n\n"
+        f"{text}\n\n"
+        "– Айдар"
+    )
 
 
 def split_message(text: str, maximum: int = MAX_MESSAGE_LENGTH) -> list[str]:

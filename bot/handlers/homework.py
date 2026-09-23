@@ -45,7 +45,7 @@ def register_homework_handlers(bot: TeleBot, service: HomeworkService, users: Us
 
     @bot.message_handler(commands=["about"])
     def about_command(message):
-        bot.send_message(message.chat.id, f"<b>Информация о боте</b>\n\nБот был создан и поддерживается Айдаром Ырысовым специально для групп SEST-1-25 и SEST-2-25. \n✱ <a href='https://t.me/aidartheklutz'>Связаться со мной</a>\n✱ <a href='https://t.me/theklutzcomm'>Мой ТГК</a>\n✱ <a href='https://aidartheklutz.github.io'>Мой сайт</a>\n✱ <a href='https://aidartheklutz.github.io/projects'>Мои проекты</a>\n\nСпасибо <a href='https://macestudios.ru'>Mace Dev</a> за предоставление хостинга.\n\nИсходный код проекта доступен на <a href='https://github.com/aidartheklutz/homework-database-tgbot/tree/sest2_hwbot'>GitHub</a>.\n\n<i>aidartheklutz 2026</i>", parse_mode="HTML")
+        bot.send_message(message.chat.id, f"<b>Информация о боте</b>\n\nБот был создан и поддерживается Айдаром Ырысовым специально для групп SEST-1-25 и SEST-2-25. \n✱ <a href='https://t.me/aidartheklutz'>Связаться со мной</a>\n✱ <a href='https://t.me/theklutzcomm'>Мой ТГК</a>\n✱ <a href='https://aidartheklutz.github.io'>Мой сайт</a>\n✱ <a href='https://aidartheklutz.github.io/projects'>Мои проекты</a>\n\nСпасибо <a href='https://macestudios.ru'>Mace Dev</a> за предоставление хостинга.\n\nИсходный код проекта доступен на <a href='https://github.com/aidartheklutz/homework-database-tgbot/tree/sest2_hwbot'>GitHub</a>.\n\nРедактор SEST-1-25: @irfadox\nРедактор SEST-2-25: @aidartheklutz\n\n<i>aidartheklutz 2026</i>", parse_mode="HTML")
 
     @bot.message_handler(commands=["today"])
     def today_command(message):
@@ -100,12 +100,12 @@ def register_homework_handlers(bot: TeleBot, service: HomeworkService, users: Us
                 bot.send_message(message.chat.id, "Прошедших домашних заданий пока нет.")
 #              bot.send_message(message.chat.id, "No past homework yet.")
                 return
-            bot.send_message(message.chat.id, f"Выберите месяц с прошедшими заданиями. Также вы можете выбрать домашнее задание на специфическую дату, например: <b>/history 2026-11-03</b>", reply_markup=_month_keyboard("history", months, 0))
+            bot.send_message(message.chat.id, f"Выберите месяц с прошедшими заданиями.\n\nЧтобы получить полное описание заданий, напишите <b>/history [Дата дедлайна]</b>. \n\nНапример: <code>/history 2026-11-03</code>", reply_markup=_month_keyboard("history", months, 0), parse_mode="HTML")
             return
         try:
             request = parse_history_arguments(argument)
         except ValueError:
-            bot.send_message(message.chat.id, "Используйте дату в формате:\n\n/history 2026-11-04\n\nЧтобы получить задания только по предметам:\n\n/history 2026-11-04 Машинное обучение, Линейная алгебра")
+            bot.send_message(message.chat.id, f"Используйте дату в формате:\n\n<b>/history 2026-11-03</b>\n\nЧтобы получить задания только по определённым предметам:\n\n<b>/history 2026-11-03 Машинное обучение, Линейная алгебра</b>", parse_mode="HTML")
 #          bot.send_message(message.chat.id, "Use date in format:\n\n/history 2026-11-04\n\nTo get homework for specific subjects:\n\n/history 2026-11-04 Machine Learning, Linear Algebra")
             return
         items = service.historical_for_request(request, selected_group(message.chat.id))

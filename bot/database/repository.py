@@ -164,6 +164,13 @@ class UserRepository:
             ).fetchall()
         return [row["chat_id"] for row in rows]
 
+    def list_all_chat_ids(self) -> list[int]:
+        with self.database.connect() as connection:
+            rows = connection.execute(
+                "SELECT chat_id FROM users ORDER BY chat_id"
+            ).fetchall()
+        return [row["chat_id"] for row in rows]
+
     def delete(self, chat_id: int) -> None:
         with self.database.connect() as connection:
             connection.execute("DELETE FROM users WHERE chat_id = ?", (chat_id,))

@@ -11,7 +11,12 @@ from bot.groups import GROUPS, SEST1, SEST2
 from bot.handlers.common import send_homework
 from bot.services.homework_service import HomeworkService
 from bot.utils.dates import parse_admin_datetime
-from bot.utils.formatting import format_homework, format_notify_message
+from bot.utils.formatting import (
+    MAX_MESSAGE_LENGTH,
+    format_announcement,
+    format_homework,
+    format_notify_message,
+)
 
 
 # Database cleanup:
@@ -76,7 +81,7 @@ def register_admin_handlers(
             return
         commands = "/share\n/edit\n/delete\n/notify\n/cancel"
         if is_head_admin(message.from_user.id):
-            commands += "\n/add_sest1\n/del_sest1"
+            commands += "\n/announcement\n/add_sest1\n/del_sest1"
         bot.send_message(message.chat.id, commands)
 
     @bot.message_handler(commands=["share"])
@@ -149,6 +154,35 @@ def register_admin_handlers(
         bot.send_message(message.chat.id, f"Уведомление отправлено: {sent} из {len(chat_ids)}.")
 #      bot.send_message(message.chat.id, f"Notification sent: {sent} of {len(chat_ids)}.")
 
+    @bot.message_handler(commands=["announcement"])
+    def announcement_command(message):
+        if not is_head_admin(message.from_user.id):
+            deny(message)
+            return
+        keyboard = types.InlineKeyboardMarkup()
+        keyboard.add(
+            types.InlineKeyboardButton(
+                "Все студенты SEST-1-25",
+                callback_data=f"admin_announcement:{SEST1}",
+            )
+        )
+        keyboard.add(
+            types.InlineKeyboardButton(
+                "Все студенты SEST-2-25",
+                callback_data=f"admin_announcement:{SEST2}",
+            )
+        )
+        keyboard.add(
+            types.InlineKeyboardButton(
+                "Все пользователи", callback_data="admin_announcement:all"
+            )
+        )
+        bot.send_message(
+            message.chat.id,
+            "Выберите получателей объявления:",
+            reply_markup=keyboard,
+        )
+
     @bot.message_handler(commands=["add_sest1", "del_sest1"])
     def manage_editor_command(message):
         if not is_head_admin(message.from_user.id):
@@ -164,13 +198,27 @@ def register_admin_handlers(
             f"Отправьте Telegram ID редактора, которого нужно {verb}.",
         )
 
-    @bot.callback_query_handler(func=lambda call: call.data.startswith(("admin_group:", "admin_list:", "admin_pick:", "admin_field:", "admin_delete:")))
+    @bot.callback_query_handler(func=lambda call: call.data.startswith(("admin_group:", "admin_list:", "admin_pick:", "admin_field:", "admin_delete:", "admin_announcement:")))
     def admin_callback(call):
         if editor_group(call.from_user.id) is None:
             bot.answer_callback_query(call.id, "Нет прав доступа.")
 #          bot.answer_callback_query(call.id, "Access denied.")
             return
         parts = call.data.split(":")
+        if parts[0] == "admin_announcement":
+            if not is_head_admin(call.from_user.id):
+                bot.answer_callback_query(call.id, "Нет прав доступа.")
+                return
+            target = parts[1]
+            if target != "all" and target not in GROUPS:
+                bot.answer_callback_query(call.id, "Неизвестная группа.")
+                return
+            states[call.from_user.id] = AdminState(
+                action="announcement", step="announcement_text", group_name=target
+            )
+            bot.send_message(call.message.chat.id, "Отправьте текст объявления.")
+            bot.answer_callback_query(call.id)
+            return
         if parts[0] == "admin_group":
             action, group_name = parts[1], parts[2]
             if not can_manage_group(call.from_user.id, group_name):
@@ -269,6 +317,46 @@ def register_admin_handlers(
             else:
                 text = "Редактор SEST-1-25 удалён." if changed else "Этот пользователь не является редактором SEST-1-25."
             bot.send_message(message.chat.id, text)
+            return
+        if state.action == "announcement":
+            if not is_head_admin(message.from_user.id):
+                states.pop(message.from_user.id, None)
+                deny(message)
+                return
+            raw_text = (message.text or "").strip()
+            if message.content_type != "text" or not raw_text:
+                bot.send_message(message.chat.id, "Текст объявления не может быть пустым.")
+                return
+            announcement_text = format_announcement(
+                apply_html_entities(message.text, message.entities).strip()
+            )
+            if len(announcement_text) > MAX_MESSAGE_LENGTH:
+                bot.send_message(message.chat.id, "Объявление слишком длинное. Сократите текст.")
+                return
+            if state.group_name == "all":
+                chat_ids = users.list_all_chat_ids()
+            elif state.group_name in GROUPS:
+                chat_ids = users.list_chat_ids(state.group_name)
+            else:
+                states.pop(message.from_user.id, None)
+                bot.send_message(message.chat.id, "Не удалось определить получателей.")
+                return
+            states.pop(message.from_user.id, None)
+            if not chat_ids:
+                bot.send_message(message.chat.id, "Пока нет пользователей, которым можно отправить объявление.")
+                return
+            sent = 0
+            for chat_id in chat_ids:
+                try:
+                    bot.send_message(chat_id, announcement_text, parse_mode="HTML")
+                    sent += 1
+                except ApiTelegramException as error:
+                    if error.error_code in {400, 403}:
+                        users.delete(chat_id)
+            bot.send_message(
+                message.chat.id,
+                f"Объявление отправлено: {sent} из {len(chat_ids)}.",
+            )
             return
         if not state.group_name or not can_manage_group(message.from_user.id, state.group_name):
             states.pop(message.from_user.id, None)
